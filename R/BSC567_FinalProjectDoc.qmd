@@ -1,0 +1,502 @@
+---
+title: "BSC 567 Final Project"
+author: "Kaci Zarek"
+date: "April 27, 2023"
+number-sections: true
+toc: true
+highlight-style: pygments
+format: 
+  html:
+    code-fold: true
+    code-tools: true
+    prefer-html: true
+  pdf:
+    geometry: 
+      - left=30mm
+      - top=30mm
+editor: visual
+bibliography: references.bib
+---
+
+# Time Series
+
+## Load Packages
+
+Before you spend hours coding, install and load these packages for your time series:
+
+```{r}
+#| label: load-packages
+#| code-fold: false
+#| include: true
+#| message: false
+#| warning: false
+
+#Install & load these packages for a time series plot
+library(tidyverse)
+library(lubridate)
+library(patchwork)
+```
+
+## Import Data
+
+Next, you will need to import the data sets you will be working with:
+
+```{r}
+#| message: false
+
+#For the discharge data, import your data:
+q_stage <- read_csv("~/KaciZ/q_stage.csv")
+
+#For the sensor nitrate data, import your data:
+c <- read_csv("C:/Users/Lab/Downloads/2022_scan_nitratedata_TAL (1).csv")
+```
+
+## Clean up Data
+
+Before we can plot our time series, we want to clean up our data by using the mutate function to ensure our date and time format is correct and using filter to obtain the exact data we want from our two data frames.
+
+```{r}
+#Filter and mutate discharge (q) data
+q <- q_stage %>% 
+  filter(stage <2) %>% 
+  mutate(Time = ymd_hms(Time))
+
+#Filter and mutate nitrate (c) data
+c <- c %>% 
+  rename(nitrate = `NO3(mg/L)`) %>% 
+  mutate(Time = mdy_hm(Time)) %>% 
+  filter(nitrate > 0 & nitrate < 1)
+
+#Filter nitrate data again for only the measured status that says 'ok'
+c <- c %>% 
+  filter(nitrate_measuredstatus == "ok")
+```
+
+## Calculate Daily Discharge and Nitrate Averages
+
+```{r}
+
+#Calculate daily averages for discharge
+q1 <- q %>% 
+  mutate(date = floor_date(Time, "day"))
+
+q1 <- q1 %>% 
+  group_by(date) %>% 
+  summarize(mean = mean(Q)) 
+
+#Calulate daily averages for nitrate 
+c1 <- c %>% 
+  mutate(date = floor_date(Time, "day"))
+
+c1 <- c1 %>% 
+  group_by(date) %>% 
+  summarize(mean = mean(nitrate)) 
+```
+
+## Time for Plots
+
+@fig-line shows the temporal variability of discharge and nitrate data throughout 2022, where the biggest storms were recorded in March and June.
+
+```{r}
+#| label: fig-line
+#| fig-alt: "Time series showing how nitrate changes in response to discharge (stream flow) throughout 2022."
+#| fig-cap: "Nitrate Concentrations and Discharge over 2022"
+#| fig-cap-location: bottom
+
+#Create a ggplot of discharge first
+p1 <- ggplot(q1, aes(x = date, y = mean)) +
+  geom_line(color = "royalblue2") +
+  labs(y = expression("(Q) (L s"^-1*")"), 
+       x= "Date") +
+  ggtitle("2022 Annual Hydrograph") +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+#Create a ggplot of nitrate concentrations next
+p2 <- ggplot(c1, aes(x = date, y = mean)) +
+  geom_line() +
+  labs(y = expression("NO"[3]~"(mg L"^-1*")"),
+       x = "Date") +
+  ggtitle("2022 Sensor Nitrate Concentrations") +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5)) 
+
+#Use patchwork to display both discharge and nitrate in one panel
+p1 + p2 + plot_layout(ncol = 1)
+```
+
+::: {.callout-caution appearance="minimal"}
+## This is preliminary discharge and nitrate data! We still need to do site-specific calibration of our nitrate sensor data.
+:::
+
+## Extra
+
+Although we plot nitrate and discharge separately, if you were curious about how to left-join the two data sets and plot them together, check this out:
+
+```{r}
+#| label: fig-point
+#| fig-cap: "The Relationship Between Nitrate Concentrations and Discharge"
+#| fig-alt: "The relationship between nitrate concentrations and discharge."
+#| warning: false
+#| message: false
+
+#left-join the discharge data set with the nitrate data set
+cq <- q1 %>% 
+  select(date, mean) %>% 
+  left_join(c1, by = "date", unmatched = "drop")
+
+#Clean up new dataframe
+cq <- cq %>% 
+  rename(Q = "mean.x", nitrate = "mean.y")
+
+#CQ plot
+ggplot(cq, aes(x = Q, y =nitrate)) + geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "red3") +
+  labs(x = expression("Q (L s"^-1*")"), y = "NO"[3]~"(mg L"^-1*")") +
+  theme_classic()
+```
+
+@fig-point shows a potential relationship between discharge (Q) and nitrate (NO~3~^-^), but further statistical analyses are required before coming to a conclusion of a positive or negative relationship between the two. Stay tuned!
+
+# Box Plots and Scatterplot
+
+## Load Packages
+
+Like we did for our first two figures, we will install and load the packages we need to create a ggplot box plot. Fortunately, ggplot2 is found in tidyverse, so we don't need to reload it, since we already loaded tidyverse above. Yet, here is the library call if you're curious:
+
+```{r}
+#| code-fold: false
+#| include: true
+#| message: false
+#| warning: false
+
+#Load if you haven't already
+library(tidyverse) #ggplot and dplyr are included in tidyverse
+```
+
+## Import Data
+
+```{r}
+#| message: false
+
+df <- read_csv("C:/Users/Lab/Downloads/N2excess_TAL_Seasonals.csv")
+```
+
+## Create Box Plots
+
+@fig-boxplot shows the temporal variation of N~2~ excess and temperature in 2022. In March 2022, following a major storm event, the lower N~2~ excess signature in @fig-boxplot-1 indicated N~2~ was generally near atmospheric equilibrium, whereas, in August, as the stream network dried down, the higher N~2~ excess signatures indicated net denitrification conditions. Therefore, across seasonals, the neutral stream state transitioned from a state where denitrification conditions dominated. Moreover, this aligns with @fig-boxplot-2 where in August, as the stream network dried down, there were warmer temperatures compared to in March.
+
+```{r}
+#| label: fig-boxplot
+#| fig-cap: "Denitrification Increases with Warmer Temperatures"
+#| fig-subcap: 
+#|    - "Temporal Variation of N~2~ Excess"
+#|    - "Temporal Variation of Temperature"
+#| layout-ncol: 2
+#| column: page
+
+ggplot(df, aes(x = Date, y = N2excess)) +
+  geom_boxplot(aes(fill = Date), lwd = 0.5) +
+  scale_fill_manual(values = c("#fee0d2", '#fc9272', "#de2d26")) +
+  geom_point(position = position_dodge(width = 1),
+  size = 3,
+  shape = 19) +
+  theme_bw() +
+  theme(legend.position = "none",
+  plot.title = element_text(hjust = 0.5, size = 20)) +
+  labs(y = "N"[2]~"Excess") +
+  ggtitle("Temporal Variation of N"[2]~"Excess")
+
+ggplot(df, aes(x = Date, y = Temperature)) +
+  geom_boxplot(aes(fill = Date), lwd = 0.5) +
+  scale_fill_manual(values = c("#fee0d2", '#fc9272', "#de2d26")) +
+  geom_point(position = position_dodge(width = 1),
+  size = 3,
+  shape = 19) +
+  theme_bw() +
+  theme(legend.position = "none",
+        plot.title = element_text(hjust = 0.5, size = 20)) +
+  labs(y = "Temperature (C)") +
+  ggtitle("Temporal Variation of Temperature")
+```
+
+## Run Statistical Analyses
+
+To determine if the positive relationship between temperature and N~2~ excess is true, we need to run some statistical tests.
+
+```{r}
+#| messages: false
+#| warning: false
+
+#Run summary statistics 
+lm <- lm(df$N2excess ~ df$Temperature, data = df)
+summary(lm)
+```
+
+## Plot Results
+
+@fig-scatterplot highlights the positive relationship between N~2~ excess and temperature. While some of the points tend to move away from confidence interval this does not significantly effect the relationship.
+
+```{r}
+#| label: fig-scatterplot
+#| fig-cap: "Positive Relationship between N~2~ Excess and Temperature"
+#| message: false
+df %>% 
+  ggplot(aes(x = Temperature, y = N2excess)) +
+  geom_smooth(method = 'lm', se = TRUE, color = "red3") +
+  geom_point() +
+  labs(y = "N"[2]~"Excess") +
+  theme_classic()
+```
+
+# Map Making
+
+Before we get to the fun part of making our map, we will first walk through how to delineate the watershed and perform common spatial analyses. Hang tight!
+
+## Set up Work Space
+
+Start by clearing your working environment and creating a temporary directory:
+
+```{r}
+#| code-fold: false
+
+#Clear environment
+remove(list=ls())
+
+#Create temporary directory
+temp_dir <- "C:/Users/Lab/Documents/KaciZ/"
+```
+
+## Load Packages
+
+In addition to the 'tidyverse' package you likely already have loaded, you will need to install and load these packages to create your map:
+
+```{r}
+#| code-fold: false
+#| include: true
+#| message: false
+#| warning: false
+
+#Install and Load these packages for making the map
+library(tidyverse) #load if you haven't already; need for the map
+library(raster)
+library(sf)
+library(elevatr)
+#whitebox::install_whitebox()
+library(whitebox)  #geospatial data analysis tool
+library(stars)
+library(mapview) #to visualize spatial data quickly
+library(viridis) #for map colors/aesthetics
+library(ggspatial) #to add compass to map
+```
+
+## Gather Your Data
+
+Before you delineate your watershed, you will need to (i) import your data set, (ii) define your watershed outlet using the latitude and longitude coordinates, (iii) define your area of interest based on coordinates, and (iv) download the digital elevation model (DEM).
+
+```{r}
+#| message: false
+
+#Import data set
+pnts <- read_csv("~/KaciZ/MIMS_TAL_Compiled - Copy.csv") %>% 
+  st_as_sf(
+    coords = c("Long", "Lat"),
+    crs = '+proj=longlat +datum=WGS84 +no_defs')
+
+#Define watershed outlet
+outlet <- tibble(
+  lat = 33.76218, 
+  lon = -85.5955) %>% 
+  st_as_sf(
+    coords = c("lon", "lat"), 
+    crs = '+proj=longlat +datum=WGS84 +no_defs')
+
+#View what you've created so far
+mapview(outlet) 
+```
+
+```{r}
+#| message: false
+#| warning: false
+#| results: hide
+
+#Define area of interest based on coordinates
+pnt1 <- c(33.754, -85.583)
+pnt2 <- c(33.79, -85.61)
+area_of_interest <- tibble(
+  lat = c(pnt1[1], pnt1[1], pnt2[1], pnt2[1]),
+  lon = c(pnt1[2], pnt2[2], pnt1[2], pnt2[2])) %>% 
+  st_as_sf(coords = c("lon", "lat"), 
+           crs = '+proj=longlat +datum=WGS84 +no_defs')
+
+#Download digital elevation model (DEM)
+dem <- get_elev_raster(area_of_interest, z=14)  #z=14 is the region we are in
+
+#Export data to temp directory
+writeRaster(dem,paste0(temp_dir, '\\dem.tif'), overwrite=T)
+st_write(outlet, paste0(temp_dir, "\\outlet.shp"), append=F)
+```
+
+## Create Flow Accumulation and Direction
+
+Next, you will use the 'Whitebox' package to perform common geographic information system analysis, including flow direction and accumulation, smoothing the DEM to remove surface roughness, and removing the depressions to properly model the watershed [@whitebox].
+
+```{r}
+#Smooth the dem
+wbt_fast_almost_gaussian_filter(
+  input = "dem.tif",
+  output = "dem_smooth.tif", 
+  sigma = 1.8, 
+  wd = temp_dir)
+
+#breach depressions 
+wbt_breach_depressions(
+  dem = "dem_smooth.tif",
+  output = "dem_breach.tif", 
+  wd= temp_dir)
+
+#flow direction
+wbt_d8_pointer(
+  dem = "dem_breach.tif",
+  output = "fdr.tif",
+  wd = temp_dir)
+
+#flow accumulation
+wbt_d8_flow_accumulation(
+  input = 'dem_breach.tif',
+  output = 'fac.tif',
+  pntr = F,
+  wd = temp_dir)
+```
+
+## Delineate the Watershed
+
+Following creating your flow direction and flow accumulation, you will snap pour points (i.e., outlet), check your snapped pour points with 'mapview' to ensure it looks how you want it to, and finally create your watershed.
+
+```{r}
+#| message: false
+#| warning: false
+#| output: false
+
+#Snap pour point
+wbt_snap_pour_points(
+  pour_pts = "outlet.shp",
+  flow_accum = "fac.tif",
+  snap_dist = 0.001,
+  output = "snap.shp",
+  wd = temp_dir)
+
+#Create temp_dir for the snap pour points 
+fac <- raster(paste0(temp_dir, "//fac.tif")) #raster your flow accumulation (fac)
+snap <- st_read(paste0(temp_dir,"//snap.shp")) 
+
+#Create watershed
+wbt_watershed(
+  d8_pntr  = "fdr.tif",
+  pour_pts = "snap.shp",
+  output   = "watershed.tif",
+  wd       = temp_dir)
+
+#read into R
+watershed <- raster(paste0(temp_dir, "//watershed.tif"))
+
+#Convert raster to vector
+watershed <- watershed %>% 
+  st_as_stars() %>% 
+  st_as_sf(., merge = TRUE)
+```
+
+```{r}
+#| warning: false
+
+#Plot outlet, watershed, and dem together to see what you have so far
+mapview(outlet) + mapview(watershed) + mapview(dem)
+```
+
+## Create Stream Flow Network
+
+After you've delineated your watershed, you will create a flow network by extracting stream grid cells from a flow accumulation raster and convert your new raster to a vector that'll then be read into the R environment.
+
+```{r}
+#| message: false
+#| warning: false
+#| output: false
+
+#Create flow network
+wbt_extract_streams(
+  flow_accum = "fac.tif",
+  output = "flow_net.tif",
+  #Can increase/decrease threshold for more/less branches in stream network
+  threshold = 650, 
+  wd = temp_dir)
+
+#convert to vector
+wbt_raster_streams_to_vector(
+  streams = "flow_net.tif", 
+  d8_pntr = "fdr.tif", 
+  output = "streams.shp", 
+  wd = temp_dir)
+
+#Read into R environement
+flow_net <- st_read(
+  paste0(temp_dir, "\\streams.shp"), 
+  crs = st_crs('+proj=longlat +datum=WGS84 +no_defs'))
+```
+
+```{r}
+#Visualize the stream flow network!!
+mapview(flow_net) + mapview(watershed)
+```
+
+## Final Touches
+
+Before map making, you will need to crop your DEM to zoom into your watershed and flow network.
+
+```{r}
+#Define extent of the watershed
+extent_ws <- extent(-85.61,-85.583, 33.754, 33.79) #from the cropped dem
+
+#Crop DEM to zoom into our specific watershed and sites
+dem_crop <- crop(dem, extent_ws)
+dem_mask <- mask(dem, watershed)
+
+#Crop flownet
+flow_net <- flow_net[watershed,]
+```
+
+## Map Making Time!
+
+@fig-map shows in June 2022, 16% (8) of the 48 sites were dry (grey circles). Under flowing, connected conditions, there was a switch from atmospheric equilibrium (0) to denitrification conditions (transformation of nitrate to N~2~) and higher N~2~ excess signatures at the top of the watershed.
+
+```{r}
+#| label: fig-map
+#| fig-cap: "Increased Denitrification in Headwater Reaches"
+#| fig-alt: "Map of N[2] excess signatures throughout the watershed, where anything above 0 indicated a switch from atmospheric equilibrium to denitrification conditions (the transformation of nitrate to N[2]. In June 2022, Only 16% (8) of the 48 sites were dry (grey circles). Under flowing, connected conditions, N[2] excess signatures indicated net denitrification, but at the top of the watershed, there were higher N[2] excess signatures (darker colored circles)." 
+#| message: false
+#| warning: false
+
+p1 <- ggplot() + 
+  geom_sf(data = watershed, col = "black", fill = "grey100", lwd = 0.5) +
+  geom_sf(data = flow_net, col = "darkblue") + 
+  geom_sf(data = pnts, aes(color = N2Excess_mean), size = 3) +
+  scale_color_viridis_c(option = "inferno", na.value = "grey50",
+                        direction = -1) +
+  theme_classic() +
+  ggtitle("Talladega N"[2]~"Excess") + 
+  xlab("Longitude") + 
+  ylab("Latitude") + 
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(text = element_text(size = 10),
+        axis.text = element_text(size = 6)) +
+  labs(colour = "N"[2]~"Excess") 
+
+p1 + 
+  ggspatial::annotation_north_arrow(
+    location = "br", which_north = "true",
+    height = unit(0.4, "in"), width = unit(0.4, "in"),
+    style = ggspatial::north_arrow_orienteering(
+      fill = c("black", "white"),
+      line_col = "grey20"))
+```
+
+[@quarto]
